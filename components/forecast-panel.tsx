@@ -101,70 +101,78 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
   // Get filtered data based on time window
   const getFilteredData = () => {
     const now = new Date();
-    let cutoffTime: Date;
-    let historicalPoints: number;
-    let forecastPoints: number;
+    let historicalHours: number;
+    let forecastHours: number;
 
     switch (timeWindow) {
       case '5min':
-        // Show last 5 minutes of history + 5 minutes of forecast
-        cutoffTime = new Date(now.getTime() - 5 * 60 * 1000);
-        historicalPoints = 1;
-        forecastPoints = 1;
+        // Show last 5 minutes + next 5 minutes
+        historicalHours = 5/60; // 5 minutes in hours
+        forecastHours = 5/60;
         break;
       case '1hour':
-        // Show last hour of history + 1 hour of forecast
-        cutoffTime = new Date(now.getTime() - 60 * 60 * 1000);
-        historicalPoints = 12;
-        forecastPoints = 12;
+        // Show last 30 minutes + next 30 minutes
+        historicalHours = 0.5;
+        forecastHours = 0.5;
         break;
       case '1day':
-        // Show last 6 hours of history + 24 hours of forecast
-        cutoffTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        historicalPoints = 72;
-        forecastPoints = 288;
+        // Show last 12 hours + next 12 hours
+        historicalHours = 12;
+        forecastHours = 12;
         break;
       case '1week':
-        // Show last day of history + forecast
-        cutoffTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        historicalPoints = 288;
-        forecastPoints = 288;
+        // Show last 3.5 days + next 3.5 days
+        historicalHours = 84; // 3.5 days
+        forecastHours = 84;
         break;
       default:
-        cutoffTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        historicalPoints = 72;
-        forecastPoints = 288;
+        historicalHours = 12;
+        forecastHours = 12;
     }
 
-    // Filter forecast data
+    // Calculate cutoff times
+    const historicalCutoff = new Date(now.getTime() - (historicalHours * 60 * 60 * 1000));
+    const forecastCutoff = new Date(now.getTime() + (forecastHours * 60 * 60 * 1000));
+
+    // Filter data to show balanced historical vs forecast
     const filteredForecasts = forecasts.filter(data => {
       const date = new Date(data.timestamp);
+      
       if (data.is_historical) {
-        return date >= cutoffTime;
+        // Show historical data within the time window
+        return date >= historicalCutoff && date <= now;
       } else {
-        // For forecast data, limit by number of points
-        const forecastStartIndex = forecasts.findIndex(f => !f.is_historical);
-        const currentIndex = forecasts.indexOf(data);
-        return currentIndex < forecastStartIndex + forecastPoints;
+        // Show forecast data within the time window
+        return date >= now && date <= forecastCutoff;
       }
     });
 
-    return filteredForecasts;
+    // Sort by timestamp to ensure proper chronological order
+    const sortedData = filteredForecasts.sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    // Debug logging
+    console.log(`Time window: ${timeWindow}, Historical: ${historicalHours}h, Forecast: ${forecastHours}h`);
+    console.log(`Filtered data points: ${sortedData.length} (Historical: ${sortedData.filter(d => d.is_historical).length}, Forecast: ${sortedData.filter(d => !d.is_historical).length})`);
+
+    return sortedData;
   };
 
   // Combine historical data with forecasts for visualization
   const chartData = () => {
     // Debug: Check what data we have
-    console.log('Raw forecast data:', forecasts);
+    console.log('Raw forecast data:', forecasts.length, 'total points');
     
     if (forecasts.length === 0) {
       return [];
     }
     
     const filteredData = getFilteredData();
+    console.log('Filtered data for chart:', filteredData.length, 'points');
     
     // Transform the forecast data to chart format
-    return filteredData.map(item => {
+    const transformedData = filteredData.map(item => {
       const isHistorical = item.is_historical || false;
       
       return {
@@ -210,6 +218,11 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
           ? item.token_price_hi_80 - item.token_price_lo_80 : null,
       };
     });
+
+    // Debug logging
+    console.log('Transformed chart data:', transformedData.length, 'points');
+
+    return transformedData;
   };
 
   const formatXAxis = (timestamp: string) => {
@@ -234,6 +247,8 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
       case '1day':
         return date.toLocaleString('en-US', {
           timeZone: 'America/Los_Angeles',
+          month: 'short',
+          day: 'numeric',
           hour: '2-digit',
           hour12: false
         });
@@ -241,9 +256,7 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
         return date.toLocaleString('en-US', {
           timeZone: 'America/Los_Angeles',
           month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          hour12: false
+          day: 'numeric'
         });
       default:
         return date.toLocaleString('en-US', {
@@ -400,7 +413,11 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
             <div>
               <CardTitle className="text-2xl font-bold">AI Predictions - TimeGPT</CardTitle>
               <CardDescription className="text-base mt-1">
-                {analysis || "Generating TimeGPT forecast with confidence intervals..."}
+                {analysis || "Generating TimeGPT forecast with confidence intervals..."} 
+                <br />
+                <span className="text-xs text-muted-foreground">
+                  Showing {timeWindow === '5min' ? '5 min' : timeWindow === '1hour' ? '30 min' : timeWindow === '1day' ? '12 hours' : '3.5 days'} historical data + {timeWindow === '5min' ? '5 min' : timeWindow === '1hour' ? '30 min' : timeWindow === '1day' ? '12 hours' : '3.5 days'} forecast
+                </span>
               </CardDescription>
             </div>
             <div className="flex items-center gap-4">
@@ -537,10 +554,11 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
                   fontSize={12}
                   tickLine={false}
                   axisLine={{ stroke: '#374151' }}
-                  interval={timeWindow === '1week' ? 'preserveStartEnd' : 'preserveEnd'}
+                  interval={timeWindow === '5min' ? 0 : timeWindow === '1hour' ? 'preserveStartEnd' : timeWindow === '1day' ? 'preserveStartEnd' : 'preserveStartEnd'}
                   angle={timeWindow === '1week' || timeWindow === '1day' ? -45 : 0}
                   textAnchor={timeWindow === '1week' || timeWindow === '1day' ? "end" : "middle"}
                   height={timeWindow === '1week' || timeWindow === '1day' ? 60 : 40}
+                  tick={{ fontSize: 10 }}
                 />
                 <YAxis 
                   stroke="#9CA3AF"
@@ -729,15 +747,14 @@ export function ForecastPanel({ marketData, onForecastUpdate }: ForecastPanelPro
                   name="Token Forecast"
                 />
                 
-                {/* Vertical line at forecast start */}
-                {marketData.length > 0 && (
-                  <ReferenceLine 
-                    x={marketData[0].timestamp} 
-                    stroke="#10B981" 
-                    strokeDasharray="3 3"
-                    label={{ value: "Now", position: "top", fill: "#10B981", fontSize: 12 }}
-                  />
-                )}
+                {/* Vertical line at forecast start - Now line at current time */}
+                <ReferenceLine 
+                  x={new Date().toISOString()} 
+                  stroke="#10B981" 
+                  strokeDasharray="3 3"
+                  strokeWidth={2}
+                  label={{ value: "Now", position: "top", fill: "#10B981", fontSize: 12, fontWeight: "bold" }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>

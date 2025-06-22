@@ -86,7 +86,7 @@ function generateFastTimeGPTForecast(marketData: any[], horizon: number, interva
   };
   
   // Add historical data with confidence intervals
-  const historicalPoints = Math.min(50, marketData.length);
+  const historicalPoints = Math.min(150, marketData.length);
   for (let i = historicalPoints - 1; i >= 0; i--) {
     const item = marketData[i];
     
